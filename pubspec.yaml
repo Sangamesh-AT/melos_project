@@ -1,0 +1,7 @@
+name: melos_project
+
+environment:
+  sdk: ">=3.3.3 <4.0.0"
+
+dev_dependencies:
+  melos: ^6.1.0
