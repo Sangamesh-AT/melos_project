@@ -1,6 +1,5 @@
 import 'dart:developer';
 
-import 'package:api_client/api_client.dart';
 import 'package:auth_client/auth_client.dart';
 import 'package:flutter/material.dart';
 
@@ -8,8 +7,7 @@ void main() {
   String baseUrl = 'http://18.214.212.168/api';
   List<String> gzipUrls = [];
 
-  ApiClient apiClient = ApiClient(baseUrl, gzipUrls);
-  AuthClient authClient = AuthClient(apiClient);
+  AuthClient authClient = AuthClient(baseUrl, gzipUrls: gzipUrls);
 
   runApp(MyApp(authClient));
 }

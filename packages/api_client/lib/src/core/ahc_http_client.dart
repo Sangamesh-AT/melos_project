@@ -11,8 +11,8 @@ class AhcHttpClient {
   late Dio _dio;
 
   AhcHttpClient(
-    String baseUrl,
-    List<String> gzipUrls, {
+    String baseUrl, {
+    List<String>? gzipUrls,
     Map<String, String>? headers,
   }) {
     _dio = Dio(
@@ -24,7 +24,7 @@ class AhcHttpClient {
         receiveTimeout: const Duration(seconds: 120),
         sendTimeout: const Duration(seconds: 120),
       ),
-    )..interceptors.add(GzipInterceptor(gzipUrls));
+    )..interceptors.add(GzipInterceptor(gzipUrls ?? []));
   }
 
   Future<dynamic> get(
