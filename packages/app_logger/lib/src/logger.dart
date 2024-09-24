@@ -1,17 +1,17 @@
 import 'package:logger/logger.dart';
 
-Logger logger = Logger();
+Logger _logger = Logger();
 
 void logInfo(String message) {
-  logger.i(message);
+  _logger.i(message);
 }
 
 void logWarning(String message) {
-  logger.w(message);
+  _logger.w(message);
 }
 
 void logError(String message, [Object? error, StackTrace? stackTrace]) {
-  logger.e(
+  _logger.e(
     message,
     error: error,
     stackTrace: stackTrace,
@@ -20,15 +20,15 @@ void logError(String message, [Object? error, StackTrace? stackTrace]) {
 }
 
 void logDebug(String message) {
-  logger.d(message);
+  _logger.d(message);
 }
 
 void logTrace(String message) {
-  logger.t(message);
+  _logger.t(message);
 }
 
 void logFatal(String message, [Object? error, StackTrace? stackTrace]) {
-  logger.f(
+  _logger.f(
     message,
     error: error,
     stackTrace: stackTrace,

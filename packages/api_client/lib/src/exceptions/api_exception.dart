@@ -1,5 +1,6 @@
-import 'package:api_client/src/models/enums.dart';
 import 'package:equatable/equatable.dart';
+
+import '../models/enums.dart';
 
 class ApiException extends Equatable implements Exception {
   final int? code;

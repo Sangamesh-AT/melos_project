@@ -6,8 +6,7 @@ import 'package:auth_client/src/models/vital_summary_res.dart';
 class AuthClient {
   final ApiClient _apiClient;
 
-  AuthClient(String baseUrl, {List<String>? gzipUrls})
-      : _apiClient = ApiClient(baseUrl, gzipUrls: gzipUrls);
+  AuthClient(this._apiClient);
 
   Future<VitalSummaryResponse> fetchVitalSummaryData(
     VitalSummaryRequest data,

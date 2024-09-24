@@ -1,37 +1,64 @@
 import 'dart:async';
 import 'dart:developer';
 
-import 'package:api_client/src/helper/gzip_interceptor.dart';
-import 'package:api_client/src/helper/logger.dart';
-import 'package:api_client/src/models/api_exception.dart';
-import 'package:api_client/src/models/enums.dart';
+import 'package:app_logger/app_logger.dart';
 import 'package:dio/dio.dart';
 
-class AhcHttpClient {
+import '../exceptions/api_exception.dart';
+import '../helper/constants.dart';
+import '../interceptors/gzip_interceptor.dart';
+import '../interceptors/token_interceptor.dart';
+import '../models/enums.dart';
+import '../models/refresh_token_request.dart';
+import '../models/refresh_token_response.dart';
+import '../services/secure_storage.dart';
+import 'api_client.dart';
+
+class AhcApiClient extends ApiClient {
   late Dio _dio;
 
-  AhcHttpClient(
-    String baseUrl, {
-    List<String>? gzipUrls,
-    Map<String, String>? headers,
-  }) {
-    _dio = Dio(
+  AhcApiClient.dev({List<String>? gzipUrls}) {
+    final dio = Dio(
       BaseOptions(
-        baseUrl: baseUrl,
+        baseUrl: 'https://dev-api.example.com',
         contentType: Headers.jsonContentType,
-        headers: headers,
         connectTimeout: const Duration(seconds: 120),
         receiveTimeout: const Duration(seconds: 120),
         sendTimeout: const Duration(seconds: 120),
       ),
-    )..interceptors.add(GzipInterceptor(gzipUrls ?? []));
+    );
+    dio.interceptors.add(TokenInterceptor());
+    if (gzipUrls != null) {
+      dio.interceptors.add(GzipInterceptor(gzipUrls));
+    }
+    _dio = dio;
   }
 
+  AhcApiClient.prod({List<String>? gzipUrls}) {
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: 'https://api.example.com',
+        contentType: Headers.jsonContentType,
+        connectTimeout: const Duration(seconds: 120),
+        receiveTimeout: const Duration(seconds: 120),
+        sendTimeout: const Duration(seconds: 120),
+      ),
+    );
+    dio.interceptors.add(TokenInterceptor());
+    if (gzipUrls != null) {
+      dio.interceptors.add(GzipInterceptor(gzipUrls));
+    }
+    _dio = dio;
+  }
+
+  @override
   Future<dynamic> get(
     String path, {
     Map<String, dynamic>? queryParameters,
     bool extractData = true,
   }) async {
+    _checkTokenExpiration();
+
     try {
       logDebug('GET $path ${queryParameters ?? ''}');
 
@@ -54,10 +81,12 @@ class AhcHttpClient {
         path: path,
         method: ApiMethod.get,
         queryParams: queryParameters,
+        extractData: extractData,
       );
     }
   }
 
+  @override
   Future<dynamic> post(
     String path,
     Object? data, {
@@ -92,10 +121,12 @@ class AhcHttpClient {
         method: ApiMethod.post,
         requestData: data,
         queryParams: queryParameters,
+        extractData: extractData,
       );
     }
   }
 
+  @override
   Future<dynamic> put(
     String path,
     Object? data, {
@@ -130,10 +161,12 @@ class AhcHttpClient {
         method: ApiMethod.put,
         requestData: data,
         queryParams: queryParameters,
+        extractData: extractData,
       );
     }
   }
 
+  @override
   Future<dynamic> patch(
     String path,
     Object? data, {
@@ -168,22 +201,22 @@ class AhcHttpClient {
         method: ApiMethod.patch,
         requestData: data,
         queryParams: queryParameters,
+        extractData: extractData,
       );
     }
   }
 
-  void _handleDioException(
+  Future<void> _handleDioException(
     DioException e, {
     required String path,
     required ApiMethod method,
     Object? requestData,
     Map<String, dynamic>? queryParams,
-  }) {
+    required bool extractData,
+  }) async {
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.receiveTimeout) {
-      throw TimeoutException(
-        e.message,
-      );
+      throw TimeoutException(e.message);
     }
 
     if (e.type == DioExceptionType.badResponse) {
@@ -198,6 +231,16 @@ class AhcHttpClient {
       }
 
       if (e.response?.statusCode == 401) {
+        if (await _refreshToken()) {
+          return await _retryRequest(
+            path,
+            method,
+            requestData: requestData,
+            queryParams: queryParams,
+            extractData: extractData,
+          );
+        }
+
         throw ApiException(
           code: e.response?.statusCode,
           path: path,
@@ -241,5 +284,92 @@ class AhcHttpClient {
       requestData: requestData,
       queryParams: queryParams,
     );
+  }
+
+  Future<bool> _refreshToken() async {
+    final refreshToken = await SecureStorage().read(
+      SecureStorageKeys.refreshToken,
+    );
+
+    if (refreshToken == null) return false;
+
+    try {
+      final response = await post(
+        'api/refresh-token',
+        RefreshTokenRequest(refreshToken),
+      );
+
+      final newAccessToken = RefreshTokenResponse.fromJson(response);
+
+      await SecureStorage().write(
+        SecureStorageKeys.accessToken,
+        newAccessToken.accessToken,
+      );
+      await SecureStorage().write(
+        SecureStorageKeys.refreshToken,
+        newAccessToken.refreshToken,
+      );
+      await SecureStorage().write(
+        SecureStorageKeys.tokenExpiry,
+        newAccessToken.expiresAt,
+      );
+
+      return true;
+    } catch (e) {
+      logError('TOKEN REFRESH FAILED: ${e.toString()}');
+      return false;
+    }
+  }
+
+  Future<dynamic> _retryRequest(
+    String path,
+    ApiMethod method, {
+    Object? requestData,
+    Map<String, dynamic>? queryParams,
+    required bool extractData,
+  }) async {
+    logDebug('RETRYING $method $path');
+
+    switch (method) {
+      case ApiMethod.get:
+        return await get(
+          path,
+          queryParameters: queryParams,
+          extractData: extractData,
+        );
+      case ApiMethod.post:
+        return await post(
+          path,
+          requestData,
+          queryParameters: queryParams,
+          extractData: extractData,
+        );
+      case ApiMethod.put:
+        return await put(
+          path,
+          requestData,
+          queryParameters: queryParams,
+          extractData: extractData,
+        );
+      case ApiMethod.patch:
+        return await patch(
+          path,
+          requestData,
+          queryParameters: queryParams,
+          extractData: extractData,
+        );
+    }
+  }
+
+  Future<void> _checkTokenExpiration() async {
+    final expiry = await SecureStorage().read(SecureStorageKeys.tokenExpiry);
+    if (expiry != null && _isTokenExpired(expiry)) {
+      await _refreshToken();
+    }
+  }
+
+  bool _isTokenExpired(String expiry) {
+    final expiryDate = DateTime.parse(expiry);
+    return expiryDate.isBefore(DateTime.now());
   }
 }

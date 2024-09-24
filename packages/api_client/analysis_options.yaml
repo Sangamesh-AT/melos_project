@@ -1,4 +1,14 @@
 include: package:flutter_lints/flutter.yaml
 
-# Additional information about this file can be found at
-# https://dart.dev/guides/language/analysis-options
+linter:
+  rules:
+    prefer_single_quotes: true
+    always_declare_return_types: true
+    prefer_const_constructors: true
+    prefer_relative_imports: true
+    require_trailing_commas: true
+    implicit_call_tearoffs: true
+
+analyzer:
+  exclude:
+    - "**/*.g.dart"
